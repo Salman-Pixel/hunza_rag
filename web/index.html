@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hunza RAG – Local Chat</title>
+
+    <!-- Tailwind (typography is optional; if it fails, page still renders) -->
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+
+    <!-- Markdown + sanitizer -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+
+    <!-- React UMD -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+</head>
+
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+    <div class="max-w-5xl mx-auto p-4">
+        <header class="flex items-center gap-3 mb-4">
+            <div class="h-10 w-10 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold">R
+            </div>
+            <div>
+                <h1 class="text-xl font-semibold">Hunza Trip Planner (Local)</h1>
+                <p class="text-sm text-gray-600">Local RAG indexes • Gemini Flash for generation</p>
+            </div>
+        </header>
+
+        <!-- Controls -->
+        <section class="bg-white rounded-2xl shadow p-4 mb-4 grid md:grid-cols-4 gap-3 items-end">
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">Days</label>
+                <input id="days" type="number" min="1" max="15" value="5" class="w-full rounded-xl border px-3 py-2" />
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">Month</label>
+                <select id="month" class="w-full rounded-xl border px-3 py-2">
+                    <option>October</option>
+                    <option>September</option>
+                    <option>May</option>
+                    <option>June</option>
+                    <option>July</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-600 mb-1">Base</label>
+                <select id="base" class="w-full rounded-xl border px-3 py-2">
+                    <option>Karimabad</option>
+                    <option>Gulmit</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-3">
+                <label class="inline-flex items-center gap-2"><input id="family" type="checkbox" checked
+                        class="rounded"> <span class="text-sm">Family friendly</span></label>
+                <label class="inline-flex items-center gap-2"><input id="lightdrive" type="checkbox" class="rounded">
+                    <span class="text-sm">≤2h driving</span></label>
+            </div>
+            <div class="md:col-span-4 flex flex-wrap gap-2 text-sm">
+                <button class="chip rounded-full border px-3 py-1 hover:bg-emerald-50"
+                    data-q="Classic forts and viewpoints">Classic forts & viewpoints</button>
+                <button class="chip rounded-full border px-3 py-1 hover:bg-emerald-50"
+                    data-q="Attabad boat ride and Passu Cones photos">Attabad boat + Passu Cones</button>
+                <button class="chip rounded-full border px-3 py-1 hover:bg-emerald-50"
+                    data-q="Kid friendly easy walks and bazaar time">Kid-friendly easy walks</button>
+            </div>
+        </section>
+
+        <main class="grid md:grid-cols-3 gap-4">
+            <section class="md:col-span-2 bg-white rounded-2xl shadow p-4">
+                <!-- <section class="md:col-span-2 bg-white rounded-2xl shadow p-4 flex flex-col h-[70vh]"> -->
+                <div id="root-chat" class="flex-1"></div>
+            </section>
+
+            <aside class="bg-white rounded-2xl shadow p-4 h-[70vh] overflow-y-auto">
+                <h2 class="font-semibold mb-2">Sources</h2>
+                <div id="root-sources"></div>
+            </aside>
+        </main>
+    </div>
+
+    <script>
+        const { useState, useEffect, useRef } = React;
+
+        const mdToHtml = (txt) => DOMPurify.sanitize(marked.parse(txt || ""));
+
+        function Bubble({ role, text }) {
+            const isUser = role === "user";
+            return React.createElement(
+                "div",
+                { className: `max-w-[92%] ${isUser ? "ml-auto" : ""}` },
+                React.createElement(
+                    "div",
+                    {
+                        className:
+                            (isUser ? "bg-emerald-600 text-white" : "bg-gray-50") +
+                            " rounded-2xl px-4 py-3 shadow border " +
+                            (isUser ? "border-emerald-600/40" : "border-gray-200"),
+                    },
+                    React.createElement("div", {
+                        className:
+                            "prose prose-sm max-w-none prose-headings:mt-0 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 " +
+                            (isUser ? "prose-invert" : ""),
+                        dangerouslySetInnerHTML: { __html: mdToHtml(text) },
+                    })
+                )
+            );
+        }
+
+        function Sources({ items }) {
+            if (!items?.length) {
+                return React.createElement("p", { className: "text-gray-600 text-sm" }, "No citations returned.");
+            }
+            return React.createElement(
+                "div",
+                { className: "space-y-3 text-sm" },
+                items.map((c, i) =>
+                    React.createElement(
+                        "div",
+                        { key: i, className: "border rounded-xl p-3" },
+                        React.createElement("div", { className: "text-xs text-gray-500 mb-1" }, `[${i + 1}] ${c.id || ""}`),
+                        React.createElement("div", { className: "font-medium" }, (c.meta?.title || "").toString().slice(0, 90)),
+                        React.createElement(
+                            "div",
+                            { className: "text-xs text-gray-500" },
+                            `Day: ${c.meta?.day || "-"} • File: ${(c.meta?.source_file || "").toString().slice(0, 40)}`
+                        ),
+                        React.createElement("div", { className: "mt-1 text-gray-700" }, (c.text || "").toString().slice(0, 220) + "…")
+                    )
+                )
+            );
+        }
+
+        function Chat() {
+            const [messages, setMessages] = useState([
+                { role: "system", text: "_Ask me for Hunza/Karimabad plans. I will cite exact chunks from your PDFs._" },
+            ]);
+            const [sources, setSources] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const inputRef = useRef(null);
+            const scroller = useRef(null);
+
+            useEffect(() => {
+                scroller.current?.lastElementChild?.scrollIntoView({ behavior: "smooth" });
+            }, [messages]);
+
+            const buildPrompt = (topic) => {
+                const days = document.getElementById("days").value || 5;
+                const month = document.getElementById("month").value || "October";
+                const base = document.getElementById("base").value || "Karimabad";
+                const fam = document.getElementById("family").checked ? "family friendly " : "";
+                const light = document.getElementById("lightdrive").checked ? ", max 2 hours driving" : "";
+                const t = (topic || "").trim() || "plan";
+                return `${fam}${days} day plan in ${month}, base in ${base}${light} — ${t}`;
+            };
+
+            const onChip = (e) => {
+                const q = buildPrompt(e.target.dataset.q || "");
+                inputRef.current.value = q;
+                inputRef.current.focus();
+            };
+
+            useEffect(() => {
+                document.querySelectorAll(".chip").forEach((btn) => btn.addEventListener("click", onChip));
+                return () => document.querySelectorAll(".chip").forEach((btn) => btn.removeEventListener("click", onChip));
+            }, []);
+
+            async function onSubmit(e) {
+                e.preventDefault();
+                if (loading) return;
+                const userText = inputRef.current.value.trim() || buildPrompt("Classic forts and viewpoints");
+                setMessages((m) => [...m, { role: "user", text: userText }]);
+                inputRef.current.value = "";
+                setLoading(true);
+                try {
+                    const res = await fetch("/api/chat", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ message: userText }),
+                    });
+                    if (!res.ok) throw new Error("HTTP " + res.status);
+                    const data = await res.json();
+                    setMessages((m) => [...m, { role: "assistant", text: data.answer || "_No answer returned._" }]);
+                    setSources(data.citations || []);
+                } catch (err) {
+                    setMessages((m) => [...m, { role: "assistant", text: `**Error:** ${err.message || err}` }]);
+                } finally {
+                    setLoading(false);
+                }
+            }
+
+            return React.createElement(
+                "div",
+                { className: "flex h-full flex-col" },
+                React.createElement(
+                    "div",
+                    { ref: scroller, className: "flex-1 overflow-y-auto space-y-3 pr-1" },
+                    messages.map((m, i) => React.createElement(Bubble, { key: i, ...m })),
+                    loading && React.createElement("div", { className: "text-gray-500 text-sm" }, "Thinking…")
+                ),
+                React.createElement(
+                    "form",
+                    { onSubmit: onSubmit, className: "mt-3 flex gap-2" },
+                    React.createElement("input", {
+                        ref: inputRef,
+                        type: "text",
+                        className: "flex-1 rounded-xl border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500",
+                        placeholder: "Ask or tweak the prompt…",
+                    }),
+                    React.createElement(
+                        "button",
+                        { className: "rounded-xl bg-emerald-600 text-white px-4 py-2", disabled: loading },
+                        loading ? "Sending…" : "Send"
+                    )
+                ),
+                React.createElement("div", { className: "hidden" }) // spacer
+            );
+        }
+
+        // Mount React
+        const ChatRoot = ReactDOM.createRoot(document.getElementById("root-chat"));
+        const SourcesRoot = ReactDOM.createRoot(document.getElementById("root-sources"));
+        ChatRoot.render(React.createElement(Chat));
+        SourcesRoot.render(React.createElement(Sources, { items: [] }));
+
+        // keep sources in sync by intercepting fetch responses (small trick)
+        (function patchFetch() {
+            const _fetch = window.fetch;
+            window.fetch = async (...args) => {
+                const res = await _fetch(...args);
+                if (res.url.endsWith("/api/chat") && res.ok) {
+                    const clone = res.clone();
+                    clone.json().then((data) => {
+                        SourcesRoot.render(React.createElement(Sources, { items: data.citations || [] }));
+                    }).catch(() => { });
+                }
+                return res;
+            };
+        })();
+    </script>
+</body>
+
+</html>
