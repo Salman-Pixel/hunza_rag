@@ -3,8 +3,8 @@ from src.utils import env_str, env_float, env_int
 import google.generativeai as genai
 
 MODEL = env_str("GEMINI_MODEL", "gemini-2.0-flash")
-TEMP = env_float("TEMPERATURE", 0.4)
-MAX_T = env_int("MAX_OUTPUT_TOKENS", 512)
+TEMP = env_float("TEMPERATURE", 0)
+MAX_T = env_int("MAX_OUTPUT_TOKENS", 7000)
 
 
 def init():

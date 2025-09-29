@@ -1,5 +1,5 @@
 # Hunza Trip Planner (Local RAG)
-
+![alt text](image.png)
 FastAPI + Gemini Flash generator with BM25/Chroma retrieval over local itinerary PDFs.
 
 ## Run
