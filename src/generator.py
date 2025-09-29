@@ -1,6 +1,6 @@
-import google.generativeai as genai
+# generator.py
 from src.utils import env_str, env_float, env_int
-
+import google.generativeai as genai
 
 MODEL = env_str("GEMINI_MODEL", "gemini-2.0-flash")
 TEMP = env_float("TEMPERATURE", 0.4)
@@ -12,30 +12,40 @@ def init():
     return genai.GenerativeModel(MODEL)
 
 
+def is_relevant(query: str, ctxs: list[dict]) -> bool:
+    """
+    Returns True if query has context or travel-related keywords.
+    """
+    hunza_keywords = [
+        "hunza", "gilgit", "karimabad", "gulmit", "altit", "baltit",
+        "attabad", "passu", "duiker", "hussaini", "eagle nest"
+    ]
+    q = query.lower()
+    if any(k in q for k in hunza_keywords):
+        return True
+    if ctxs:  # if retriever found context snippets, treat as relevant
+        return True
+    return False
+
+
 def craft_prompt(query: str, ctxs: list[dict]) -> str:
     sources = "\n\n".join([f"[{i+1}] {c['text']}" for i, c in enumerate(ctxs)])
     return (
-        "You are a Hunza travel assistant. Use only the sources. "
-        "If no exact 5 day plan exists, compose one by selecting relevant activities from the sources. "
-        "Constraints, October month, family friendly pacing, base nights in Karimabad or Gulmit only, "
-        "no Islamabad or Lahore segments, max 2 hours driving per day, include Baltit, Altit, Duiker, "
-        "Attabad boat or lakeside, Passu Cones view, Hussaini bridge if conditions are safe. "
-        "Output, a one line overview, then Day 1 to Day 5 with Morning, Afternoon, Evening. "
-        "End with 3 safety or timing notes. Cite at least one source for every day, like [1], [2].\n\n"
+        "You are a helpful Hunza travel assistant. "
+        "Answer the user's question using the sources below. "
+        "If the answer is not in the sources, say you don’t know.\n\n"
         f"User question: {query}\n\nTop sources:\n{sources}"
     )
 
 
-def ensure_no_islamabad(txt: str) -> str:
-    bad = ["islamabad", "lahore", "airport"]
-    if any(w in txt.lower() for w in bad):
-        txt += "\n\n[Note] Removed out of area segments. Keep all 5 days within Hunza."
-    return txt
-
-
 def answer(query, ctxs):
+    if not is_relevant(query, ctxs):
+        return "I can only answer questions related to Hunza travel."
+
     model = init()
     prompt = craft_prompt(query, ctxs)
     resp = model.generate_content(prompt, generation_config={
-                                  "temperature": TEMP, "max_output_tokens": MAX_T})
-    return ensure_no_islamabad(resp.text or "")
+        "temperature": TEMP,
+        "max_output_tokens": MAX_T
+    })
+    return resp.text or ""
