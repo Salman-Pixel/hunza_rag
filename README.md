@@ -289,5 +289,3 @@ data/raw_pdfs/
 .DS_Store
 .vscode/
 ````
-
-If you want, I can also generate a crisp **repo description + topics** list for GitHub (e.g., `rag`, `fastapi`, `chroma`, `gemini`, `bm25`, `tailwind`, `react-umd`).
